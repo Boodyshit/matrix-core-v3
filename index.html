@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>System Diagnostic & Buffer Trace</title>
+    <style>
+        body { background: #000; color: #0f0; font-family: 'Courier New', monospace; overflow: hidden; margin: 0; }
+        #console { white-space: pre; font-size: 10px; line-height: 9px; height: 100vh; width: 100vw; letter-spacing: 1px; }
+        #overlay { position: fixed; top: 0; background: rgba(0,20,0,0.9); width: 100%; padding: 5px; font-size: 12px; border-bottom: 1px solid #0f0; z-index: 10; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        NODE_STATUS: <span id="info">RUNNING</span> | 
+        DEPTH: <span id="depth">1</span> | 
+        CACHE_LOAD: <span id="items">0</span> | 
+        THREAT_LVL: <span id="threat">LOW</span>
+    </div>
+    <div id="console"></div>
+
+    <script>
+        const canvas = document.getElementById('console');
+        const mapSize = 24;
+        let map = [];
+        let pX = 2, pY = 2, pA = 0;
+        let depth = 1, items = 0;
+        let monsterX = 10, monsterY = 10;
+
+        // --- Maze Generator (Recursive Backtracker) ---
+        function initMap() {
+            map = new Array(mapSize * mapSize).fill(1);
+            function walk(x, y) {
+                map[y * mapSize + x] = 0;
+                let d = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random() - 0.5);
+                for(let [dx, dy] of d) {
+                    let nx = x + dx, ny = y + dy;
+                    if(nx > 0 && nx < mapSize && ny > 0 && ny < mapSize && map[ny * mapSize + nx] === 1) {
+                        map[(y + dy/2) * mapSize + (x + dx/2)] = 0;
+                        walk(nx, ny);
+                    }
+                }
+            }
+            walk(1, 1);
+            map[10 * mapSize + 10] = 2; // Target / Next Level
+            map[5 * mapSize + 5] = 3;   // Item / Weapon
+        }
+
+        function render() {
+            let view = "";
+            const w = 100, h = 40;
+
+            for (let y = 0; y < h; y++) {
+                let line = "";
+                for (let x = 0; x < w; x++) {
+                    let rayA = (pA - 0.6) + (x / w) * 1.2;
+                    let d = 0, hit = 0;
+                    let sx = Math.sin(rayA), sy = Math.cos(rayA);
+
+                    while (d < 16) {
+                        d += 0.1;
+                        let tx = Math.floor(pX + sx * d), ty = Math.floor(pY + sy * d);
+                        if (tx < 0 || tx >= mapSize || ty < 0 || ty >= mapSize) { hit = 1; d = 16; break; }
+                        if (map[ty * mapSize + tx] === 1) { hit = 1; break; }
+                        if (tx === Math.floor(monsterX) && ty === Math.floor(monsterY)) { hit = 9; break; } // Monster
+                        if (map[ty * mapSize + tx] === 3) { hit = 3; break; } // Item
+                    }
+
+                    let ceil = (h / 2.0) - h / d;
+                    let floor = h - ceil;
+
+                    if (y < ceil) line += " ";
+                    else if (y <= floor) {
+                        if (hit === 9) line += "X"; // Monster visual
+                        else if (hit === 3) line += "!"; // Item visual
+                        else line += d < 4 ? "#" : (d < 8 ? "/" : ":");
+                    }
+                    else line += ".";
+                }
+                view += line + "\n";
+            }
+            canvas.textContent = view;
+
+            // Monster AI: Follow player
+            let dx = pX - monsterX, dy = pY - monsterY;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            monsterX += (dx / dist) * 0.02;
+            monsterY += (dy / dist) * 0.02;
+
+            if (dist < 0.5) {
+                document.getElementById('info').innerText = "FATAL_ERROR_REBOOTING";
+                pX = 2; pY = 2; // Reset
+            }
+            
+            // Item Pick Up
+            if (map[Math.floor(pY) * mapSize + Math.floor(pX)] === 3) {
+                map[Math.floor(pY) * mapSize + Math.floor(pX)] = 0;
+                items++;
+                document.getElementById('items').innerText = items;
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        window.onkeydown = (e) => {
+            let nx = pX, ny = pY;
+            if (e.key === 'w') { nx += Math.sin(pA) * 0.3; ny += Math.cos(pA) * 0.3; }
+            if (e.key === 's') { nx -= Math.sin(pA) * 0.3; ny -= Math.cos(pA) * 0.3; }
+            if (e.key === 'a') pA -= 0.15;
+            if (e.key === 'd') pA += 0.15;
+            if (map[Math.floor(ny) * mapSize + Math.floor(nx)] !== 1) { pX = nx; pY = ny; }
+        };
+
+        initMap();
+        render();
+    </script>
+</body>
+</html>
